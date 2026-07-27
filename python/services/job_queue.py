@@ -30,14 +30,13 @@ class ConvertQueue:
                     "too many conversion jobs are queued; please try again later",
                 )
             self._submitted += 1
+        future = self._executor.submit(func, *args)
+        future.add_done_callback(self._on_done)
 
     @property
     def queue_size(self) -> int:
         with self._lock:
             return max(0, self._submitted - 1)
-
-        future = self._executor.submit(func, *args)
-        future.add_done_callback(self._on_done)
 
     def _on_done(self, future: Future[Any]) -> None:
         with self._lock:

@@ -4,7 +4,6 @@ import { Trophy, Crown, RefreshCw, Clock, Loader2, Award, Calendar, AlertCircle,
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../lib/firebase';
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from 'firebase/firestore';
-import { MOCK_SONGS, MOCK_LEADERBOARD } from '../data/mockData';
 import { BADGES_LIST } from './dashboard/DashboardQuests';
 
 export default function Leaderboard() {
@@ -17,7 +16,6 @@ export default function Leaderboard() {
   const [cacheTime, setCacheTime] = useState<number | null>(null);
   const [isCalculatedRealTime, setIsCalculatedRealTime] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Check admin role
@@ -65,7 +63,6 @@ export default function Leaderboard() {
       setLoading(true);
     }
     setIsCalculatedRealTime(false);
-    setIsDemoMode(false);
 
     try {
       // Check cache document if not forced
@@ -180,9 +177,8 @@ export default function Leaderboard() {
         }));
 
       if (sortedList.length === 0 && sortedLevelList.length === 0) {
-        setIsDemoMode(true);
-        sortedList = MOCK_LEADERBOARD;
-        sortedLevelList = MOCK_LEADERBOARD.map(p => ({...p, score: p.score * 10, level: Math.floor(p.score/100) + 1, badgesCount: 2}));
+        sortedList = [];
+        sortedLevelList = [];
       }
 
       setRankings(sortedList);
@@ -215,7 +211,8 @@ export default function Leaderboard() {
   }, []);
 
   const currentRankingsList = activeTab === 'score' ? rankings : levelRankings;
-  const displayRankings = currentRankingsList.length > 0 ? currentRankingsList : (isDemoMode ? (activeTab === 'score' ? MOCK_LEADERBOARD : MOCK_LEADERBOARD.map(p => ({...p, score: p.score * 10, level: Math.floor(p.score/100) + 1, badgesCount: 2}))) : []);
+  const displayRankings = currentRankingsList;
+  const isDemoMode = rankings.length === 0 && levelRankings.length === 0;
 
   // Utility to safely retrieve placement or return beautifully formatted placeholder blocks
   const getRankData = (index: number) => {

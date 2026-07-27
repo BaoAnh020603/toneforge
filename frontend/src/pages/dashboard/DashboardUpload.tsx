@@ -35,6 +35,7 @@ import {
 } from "firebase/firestore";
 import { UpgradeModal } from "../../components/UpgradeModal";
 import { useAlert } from "../../contexts/AlertContext";
+import { extractYouTubeVideoId } from "../../lib/voiceApi";
 
 const API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || "http://localhost:8000";
 
@@ -167,6 +168,27 @@ export default function DashboardUpload() {
   const handleSearch = async (queryToSearch?: string) => {
     const q = queryToSearch || searchQuery;
     if (!q.trim()) return;
+
+    const maybeVideoId = extractYouTubeVideoId(q);
+    const isDirectYouTubeUrl =
+      !!maybeVideoId &&
+      (q.includes("youtube.com/watch") ||
+        q.includes("youtu.be/") ||
+        q.includes("youtube.com/shorts/") ||
+        q.includes("youtube.com/embed/"));
+
+    if (isDirectYouTubeUrl) {
+      await startConversion(q, {
+        id: maybeVideoId,
+        video_id: maybeVideoId,
+        url: q,
+        title: q,
+        channel: "YouTube",
+        thumbnail: `https://i.ytimg.com/vi/${maybeVideoId}/hqdefault.jpg`,
+      });
+      return;
+    }
+
     setIsSearching(true);
     try {
       const res = await fetch(
