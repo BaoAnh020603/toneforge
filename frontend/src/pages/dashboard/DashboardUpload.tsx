@@ -563,7 +563,12 @@ export default function DashboardUpload() {
         if (event.data) {
           try {
             const eData = JSON.parse(event.data);
-            setConvertError(eData.message || "Lỗi xử lý file âm thanh.");
+            const backendMessage =
+              eData.error_detail ||
+              eData.message ||
+              eData.error ||
+              "Lỗi xử lý file âm thanh.";
+            setConvertError(backendMessage);
           } catch (e) {
             setConvertError("Lỗi không xác định từ server.");
           }
@@ -597,7 +602,11 @@ export default function DashboardUpload() {
       });
     } catch (error: any) {
       console.error("Convert:", error);
-      setConvertError(error.message || "Có lỗi xảy ra kết nối server.");
+      const backendMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Có lỗi xảy ra kết nối server.";
+      setConvertError(backendMessage);
       // Bỏ setIsConverting(false) để UI giữ lại thanh loading và hiển thị form báo lỗi
     }
   };
