@@ -1,0 +1,8 @@
+{
+  "name": "ToneForge",
+  "description": "Phòng thí nghiệm luyện giọng, phân tích cao độ và theo dõi tiến bộ theo thời gian thực.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

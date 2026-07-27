@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "VoiceEvaluation": {
+      "title": "Voice Evaluation",
+      "description": "Analysis result of a singing session by AI",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "targetNote": { "type": "string" },
+        "minNote": { "type": "string" },
+        "maxNote": { "type": "string" },
+        "voiceType": { "type": "string" },
+        "analysisResult": { "type": "string" },
+        "score": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "analysisResult", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Extended user information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "bestVoiceType": { "type": "string" },
+        "bestVoiceRange": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId"]
+    },
+    "Song": {
+      "title": "Saved Voice Song",
+      "description": "A YouTube voice practice song converted by the Python server and saved by a user",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "sourceType": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "youtubeVideoId": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "duration": { "type": "number" },
+        "pythonSongId": { "type": "string" },
+        "convertJobId": { "type": "string" },
+        "metadata": { "type": "object" },
+        "genre": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "plays": { "type": "number" },
+        "highestScore": { "type": "number" },
+        "noteChunkCount": { "type": "number" },
+        "noteFormat": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "title", "sourceUrl", "pythonSongId", "noteChunkCount", "createdAt", "updatedAt"]
+    },
+    "SingingHistory": {
+      "title": "Singing History",
+      "description": "History of played songs and scores",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "songId": { "type": "string" },
+        "songTitle": { "type": "string" },
+        "songArtist": { "type": "string" },
+        "score": { "type": "number" },
+        "aiFeedback": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "songId", "score", "createdAt"]
+    },
+    "FavoriteSong": {
+      "title": "Favorite Song",
+      "description": "Mapping of a user to their favorite song",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "songId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "songId", "createdAt"]
+    },
+    "SongNoteChunk": {
+      "title": "Saved Voice Song Note Chunk",
+      "description": "Chunked base64 MIDI note payload for a saved voice practice song",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "songId": { "type": "string" },
+        "index": { "type": "number" },
+        "data": { "type": "string" }
+      },
+      "required": ["ownerId", "songId", "index", "data"]
+    }
+  },
+  "firestore": {
+    "/voiceEvaluations/{evaluationId}": {
+      "schema": "VoiceEvaluation",
+      "description": "Collection of voice evaluation results"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile settings and stats"
+    },
+    "/songs/{songId}": {
+      "schema": "Song",
+      "description": "User-owned saved voice practice songs"
+    },
+    "/songs/{songId}/noteChunks/{chunkId}": {
+      "schema": "SongNoteChunk",
+      "description": "Chunked note payload for saved voice practice songs"
+    },
+    "/singingHistory/{historyId}": {
+      "schema": "SingingHistory",
+      "description": "User singing history"
+    },
+    "/favoriteSongs/{favoriteId}": {
+      "schema": "FavoriteSong",
+      "description": "Mapping of a user to their favorite song"
+    }
+  }
+}

@@ -1,0 +1,1482 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>ToneForge realtime scoring</title>
+        <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    </head>
+    <body class="min-h-screen bg-base-200 text-base-content">
+        <dialog id="setupModal" class="modal modal-open" open>
+            <div class="modal-box max-w-2xl rounded-box">
+                <div class="mb-5">
+                    <h1 class="text-2xl font-semibold">ToneForge realtime scoring</h1>
+                    <p class="mt-1 text-sm text-base-content/70">
+                        Microphone permission is requested automatically. Convert a YouTube song before entering the scoring screen.
+                    </p>
+                </div>
+
+                <div class="mb-4 grid gap-3 sm:grid-cols-3">
+                    <div class="rounded-box border border-base-300 bg-base-200 p-3">
+                        <div class="text-xs text-base-content/60">Microphone</div>
+                        <div id="setupMicState" class="mt-1 font-semibold">Requesting...</div>
+                    </div>
+                    <div class="rounded-box border border-base-300 bg-base-200 p-3">
+                        <div class="text-xs text-base-content/60">Reference</div>
+                        <div id="setupReferenceState" class="mt-1 font-semibold">Not loaded</div>
+                    </div>
+                    <div class="rounded-box border border-base-300 bg-base-200 p-3">
+                        <div class="text-xs text-base-content/60">Engine</div>
+                        <div class="mt-1 font-semibold">Basic Pitch</div>
+                    </div>
+                </div>
+
+                <div role="tablist" class="tabs tabs-box mb-4">
+                    <button id="searchTab" class="tab tab-active" type="button">Search YouTube</button>
+                    <button id="linkTab" class="tab" type="button">Paste link</button>
+                    <button id="uploadTab" class="tab" type="button">Upload file</button>
+                </div>
+
+                <section id="searchPanel" class="space-y-3">
+                    <div class="join w-full">
+                        <input id="searchInput" class="input input-bordered join-item w-full" placeholder="Search ToneForge video..." />
+                        <button id="searchBtn" class="btn btn-primary join-item" type="button">Search</button>
+                    </div>
+                    <div id="searchResults" class="grid max-h-80 gap-2 overflow-auto"></div>
+                </section>
+
+                <section id="linkPanel" class="hidden">
+                    <label class="form-control">
+                        <span class="label-text mb-1">YouTube URL</span>
+                        <input
+                            id="youtubeUrl"
+                            class="input input-bordered w-full"
+                            value="https://www.youtube.com/watch?v=pENMETTGamA"
+                        />
+                    </label>
+                </section>
+
+                <section id="uploadPanel" class="hidden">
+                    <label class="form-control">
+                        <span class="label-text mb-1">Audio file</span>
+                        <input id="audioFile" class="file-input file-input-bordered w-full" type="file" accept=".mp3,.wav,.flac,.m4a,.ogg,audio/*" />
+                    </label>
+                    <div id="uploadFileName" class="mt-2 text-sm text-base-content/60">No file selected.</div>
+                </section>
+
+                <progress id="convertProgress" class="progress progress-primary mt-4 hidden w-full" value="0" max="100"></progress>
+                <div id="message" class="mt-3 hidden alert"></div>
+
+                <div class="modal-action items-center justify-between">
+                    <button id="retryMicBtn" class="btn btn-ghost hidden" type="button">Allow microphone</button>
+                    <button id="convertBtn" class="btn btn-primary" type="button">Convert and start</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog id="finalModal" class="modal">
+            <div class="modal-box max-w-3xl rounded-box">
+                <div class="mb-5 flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl font-semibold">Tổng kết phiên hát</h2>
+                        <p id="finalSubtitle" class="mt-1 text-sm text-base-content/70">Kết quả sẽ hiển thị sau khi có dữ liệu chấm điểm.</p>
+                    </div>
+                    <div id="finalGrade" class="rounded-box bg-base-200 px-5 py-3 text-center">
+                        <div class="text-xs text-base-content/60">Điểm tổng</div>
+                        <div id="finalScore" class="text-5xl font-semibold">--</div>
+                    </div>
+                </div>
+
+                <div id="finalStats" class="grid gap-3 sm:grid-cols-3"></div>
+                <div id="finalAdvice" class="mt-5 rounded-box border border-base-300 bg-base-200 p-4 text-sm"></div>
+
+                <div class="modal-action">
+                    <button id="closeFinalBtn" class="btn btn-primary" type="button">Đóng</button>
+                </div>
+            </div>
+        </dialog>
+
+        <main id="appShell" class="mx-auto hidden max-w-7xl p-4">
+            <header class="mb-4 grid gap-3 rounded-box border border-base-300 bg-base-100 p-4 lg:grid-cols-[1fr_auto_auto] lg:items-center">
+                <div>
+                    <div class="text-sm text-base-content/60">Phiên ToneForge</div>
+                    <h1 id="songTitle" class="text-xl font-semibold">Reference loaded</h1>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <div id="micState" class="badge badge-outline">Mic pending</div>
+                    <div id="voiceBadge" class="badge badge-outline">No signal</div>
+                    <div id="segmentBadge" class="badge badge-outline">No segment</div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button id="startBtn" class="btn btn-primary btn-sm" type="button">Bắt đầu</button>
+                    <button id="pauseBtn" class="btn btn-sm" type="button">Tạm dừng</button>
+                    <button id="finishBtn" class="btn btn-error btn-sm" type="button">Kết thúc</button>
+                </div>
+            </header>
+
+            <div class="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+                <section class="space-y-4">
+                    <div class="overflow-hidden rounded-box border border-base-300 bg-black">
+                        <div id="player" class="aspect-video w-full"></div>
+                    </div>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm text-base-content/60">Playback</div>
+                                <div id="playbackTime" class="text-xl font-semibold">0.000s</div>
+                            </div>
+                            <div class="min-w-44">
+                                <div class="mb-1 flex justify-between text-xs text-base-content/60">
+                                    <span>Tone level</span>
+                                    <span id="voiceLevelText">0%</span>
+                                </div>
+                                <div class="h-3 overflow-hidden rounded-full bg-base-300">
+                                    <div id="voiceMeter" class="h-full w-0 bg-info transition-all"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="h-3 overflow-hidden rounded-full bg-base-300">
+                            <div id="songProgress" class="h-full w-0 bg-primary"></div>
+                        </div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm text-base-content/60">Reference piano roll</div>
+                                <div id="currentNote" class="text-lg font-semibold">Waiting for playback</div>
+                            </div>
+                            <div class="flex gap-2 text-xs">
+                                <span class="badge badge-primary">MIDI</span>
+                                <span class="badge badge-error">Playhead</span>
+                            </div>
+                        </div>
+                        <canvas id="pianoRoll" class="h-56 w-full rounded-box bg-base-200"></canvas>
+                        <div id="noteStrip" class="mt-3 flex gap-2 overflow-x-auto pb-1"></div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm text-base-content/60">So khớp giọng hát với nốt MIDI</div>
+                                <div id="matchSummary" class="text-lg font-semibold">Sing during a segment to see matching</div>
+                                <div class="mt-1 text-sm text-base-content/60">
+                                    Đường xanh là nốt mục tiêu. Chấm tròn là giọng của bạn: xanh khớp, vàng gần đúng, đỏ lệch rõ.
+                                </div>
+                            </div>
+                            <div class="grid gap-1 text-xs">
+                                <span class="badge badge-primary">MIDI target</span>
+                                <span class="badge badge-success">Voice match</span>
+                                <span class="badge badge-warning">Voice near</span>
+                                <span class="badge badge-error">Voice off</span>
+                            </div>
+                        </div>
+                        <canvas id="matchChart" class="h-72 w-full rounded-box bg-base-200"></canvas>
+                    </section>
+                </section>
+
+                <aside class="space-y-4">
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="text-sm text-base-content/60">Phản hồi tức thì</div>
+                        <div id="focusFeedback" class="mt-1 text-3xl font-semibold">Sẵn sàng</div>
+                        <div id="targetNoteLabel" class="mt-1 text-sm text-base-content/60">Nốt mục tiêu sẽ hiện khi vào đoạn hát.</div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 text-sm font-semibold text-base-content/70">Thiết lập luyện tập</div>
+                        <label class="form-control">
+                            <span class="label-text">Latency offset: <span id="latencyValue">0ms</span></span>
+                            <input id="latencyInput" class="range range-xs range-primary" type="range" min="-300" max="300" step="10" value="0" />
+                        </label>
+                        <div class="mt-4 grid grid-cols-3 gap-2">
+                            <label class="form-control">
+                                <span class="label-text">Low</span>
+                                <input id="minMidiInput" class="input input-bordered input-sm" type="number" min="0" max="127" value="48" />
+                            </label>
+                            <label class="form-control">
+                                <span class="label-text">High</span>
+                                <input id="maxMidiInput" class="input input-bordered input-sm" type="number" min="0" max="127" value="84" />
+                            </label>
+                            <label class="form-control">
+                                <span class="label-text">Min ms</span>
+                                <input id="minNoteMsInput" class="input input-bordered input-sm" type="number" min="0" max="1000" step="10" value="80" />
+                            </label>
+                        </div>
+                        <button id="applyFilterBtn" class="btn btn-sm btn-outline mt-3 w-full" type="button">Apply melody filter</button>
+                        <div id="filterStats" class="mt-2 text-xs text-base-content/60">Default ToneForge range: C3-C6.</div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <div class="text-sm text-base-content/60">Score</div>
+                                <div id="scoreValue" class="text-5xl font-semibold">--</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-base-content/60">Pitch</div>
+                                <div id="pitchStatus" class="text-2xl font-semibold">--</div>
+                                <div id="centsValue" class="text-sm text-base-content/60">0 cents</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-5 space-y-3">
+                            <div>
+                                <div class="mb-1 flex justify-between text-sm">
+                                    <span>Pitch</span>
+                                    <span id="pitchBreakdown">--</span>
+                                </div>
+                                <progress id="pitchBar" class="progress progress-success w-full" value="0" max="100"></progress>
+                            </div>
+                            <div>
+                                <div class="mb-1 flex justify-between text-sm">
+                                    <span>Timing</span>
+                                    <span id="timingBreakdown">--</span>
+                                </div>
+                                <progress id="timingBar" class="progress progress-info w-full" value="0" max="100"></progress>
+                            </div>
+                            <div>
+                                <div class="mb-1 flex justify-between text-sm">
+                                    <span>Stability</span>
+                                    <span id="stabilityBreakdown">--</span>
+                                </div>
+                                <progress id="stabilityBar" class="progress progress-warning w-full" value="0" max="100"></progress>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 flex items-center justify-between">
+                            <div>
+                                <div class="text-sm text-base-content/60">Live pitch error</div>
+                                <div id="pitchHint" class="font-semibold">Waiting for ToneForge input</div>
+                            </div>
+                            <div id="pendingCount" class="badge badge-outline">0 pending</div>
+                        </div>
+                        <div class="relative h-14 rounded-box bg-base-200">
+                            <div class="absolute left-1/2 top-0 h-full w-0.5 bg-base-content/40"></div>
+                            <div class="absolute left-[calc(50%-16%)] top-0 h-full w-px bg-success/50"></div>
+                            <div class="absolute left-[calc(50%+16%)] top-0 h-full w-px bg-success/50"></div>
+                            <div id="pitchNeedle" class="absolute top-2 h-10 w-2 rounded-full bg-base-content transition-all"></div>
+                        </div>
+                        <div class="mt-1 flex justify-between text-xs text-base-content/60">
+                            <span>Flat</span>
+                            <span>On pitch</span>
+                            <span>Sharp</span>
+                        </div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 text-sm font-semibold text-base-content/70">Chunk state</div>
+                        <div id="chunkState" class="rounded-box bg-base-200 p-3 font-semibold">Idle</div>
+                    </section>
+
+                    <section class="rounded-box border border-base-300 bg-base-100 p-4">
+                        <div class="mb-3 text-sm font-semibold text-base-content/70">Loaded reference</div>
+                        <div id="referenceStats" class="grid gap-2 text-sm"></div>
+                    </section>
+                </aside>
+            </div>
+        </main>
+
+        <script>
+            const API_BASE = "http://localhost:8000"
+            const PREP_SECONDS = 0.3
+            const SCORE_CHUNK_SECONDS = 1.0
+            const MIN_SCORE_CHUNK_SECONDS = 0.5
+            const PITCH_TOLERANCE_CENTS = 50
+            const VOICE_RMS_THRESHOLD = 0.018
+            const VOICE_HOLD_MS = 350
+            const SEARCH_DEBOUNCE_MS = 200
+
+            const els = {
+                setupModal: document.getElementById("setupModal"),
+                finalModal: document.getElementById("finalModal"),
+                appShell: document.getElementById("appShell"),
+                searchTab: document.getElementById("searchTab"),
+                linkTab: document.getElementById("linkTab"),
+                uploadTab: document.getElementById("uploadTab"),
+                searchPanel: document.getElementById("searchPanel"),
+                linkPanel: document.getElementById("linkPanel"),
+                uploadPanel: document.getElementById("uploadPanel"),
+                searchInput: document.getElementById("searchInput"),
+                searchBtn: document.getElementById("searchBtn"),
+                searchResults: document.getElementById("searchResults"),
+                youtubeUrl: document.getElementById("youtubeUrl"),
+                audioFile: document.getElementById("audioFile"),
+                uploadFileName: document.getElementById("uploadFileName"),
+                convertBtn: document.getElementById("convertBtn"),
+                retryMicBtn: document.getElementById("retryMicBtn"),
+                setupMicState: document.getElementById("setupMicState"),
+                setupReferenceState: document.getElementById("setupReferenceState"),
+                convertProgress: document.getElementById("convertProgress"),
+                message: document.getElementById("message"),
+                finalSubtitle: document.getElementById("finalSubtitle"),
+                finalScore: document.getElementById("finalScore"),
+                finalStats: document.getElementById("finalStats"),
+                finalAdvice: document.getElementById("finalAdvice"),
+                closeFinalBtn: document.getElementById("closeFinalBtn"),
+                songTitle: document.getElementById("songTitle"),
+                focusFeedback: document.getElementById("focusFeedback"),
+                targetNoteLabel: document.getElementById("targetNoteLabel"),
+                latencyInput: document.getElementById("latencyInput"),
+                latencyValue: document.getElementById("latencyValue"),
+                minMidiInput: document.getElementById("minMidiInput"),
+                maxMidiInput: document.getElementById("maxMidiInput"),
+                minNoteMsInput: document.getElementById("minNoteMsInput"),
+                applyFilterBtn: document.getElementById("applyFilterBtn"),
+                filterStats: document.getElementById("filterStats"),
+                startBtn: document.getElementById("startBtn"),
+                pauseBtn: document.getElementById("pauseBtn"),
+                finishBtn: document.getElementById("finishBtn"),
+                playbackTime: document.getElementById("playbackTime"),
+                songProgress: document.getElementById("songProgress"),
+                voiceMeter: document.getElementById("voiceMeter"),
+                voiceLevelText: document.getElementById("voiceLevelText"),
+                currentNote: document.getElementById("currentNote"),
+                segmentBadge: document.getElementById("segmentBadge"),
+                scoreValue: document.getElementById("scoreValue"),
+                pitchStatus: document.getElementById("pitchStatus"),
+                centsValue: document.getElementById("centsValue"),
+                pitchBreakdown: document.getElementById("pitchBreakdown"),
+                timingBreakdown: document.getElementById("timingBreakdown"),
+                stabilityBreakdown: document.getElementById("stabilityBreakdown"),
+                pitchBar: document.getElementById("pitchBar"),
+                timingBar: document.getElementById("timingBar"),
+                stabilityBar: document.getElementById("stabilityBar"),
+                pitchHint: document.getElementById("pitchHint"),
+                pitchNeedle: document.getElementById("pitchNeedle"),
+                micState: document.getElementById("micState"),
+                voiceBadge: document.getElementById("voiceBadge"),
+                chunkState: document.getElementById("chunkState"),
+                pendingCount: document.getElementById("pendingCount"),
+                referenceStats: document.getElementById("referenceStats"),
+                matchSummary: document.getElementById("matchSummary"),
+                noteStrip: document.getElementById("noteStrip"),
+                pianoRoll: document.getElementById("pianoRoll"),
+                matchChart: document.getElementById("matchChart"),
+            }
+
+            const state = {
+                player: null,
+                playerReady: false,
+                metadata: null,
+                rawNotes: [],
+                notes: [],
+                segments: [],
+                songId: null,
+                micStream: null,
+                audioContext: null,
+                processor: null,
+                source: null,
+                monitorGain: null,
+                captureEnabled: false,
+                activeSegIndex: -1,
+                sessionStarted: false,
+                sessionActive: false,
+                voiceActive: false,
+                lastVoiceAtMs: 0,
+                pcmChunks: [],
+                pcmSamples: 0,
+                chunkStartTime: null,
+                pendingScores: 0,
+                lastFrameData: [],
+                scoreHistory: [],
+                sessionFrames: [],
+                setupMode: "search",
+                selectedYoutubeUrl: "",
+                selectedYoutubeTitle: "",
+                searchTimer: null,
+                searchRequestId: 0,
+                latencyOffsetMs: 0,
+                melodyFilter: {
+                    minMidi: 48,
+                    maxMidi: 84,
+                    minNoteDuration: 0.08,
+                },
+            }
+
+            els.convertBtn.addEventListener("click", convertYouTube)
+            els.searchBtn.addEventListener("click", searchYouTubeVideos)
+            els.searchInput.addEventListener("input", debounceSearchYouTubeVideos)
+            els.searchInput.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") searchYouTubeVideos()
+            })
+            els.searchTab.addEventListener("click", () => setSetupMode("search"))
+            els.linkTab.addEventListener("click", () => setSetupMode("link"))
+            els.uploadTab.addEventListener("click", () => setSetupMode("upload"))
+            els.audioFile.addEventListener("change", () => {
+                els.uploadFileName.textContent = els.audioFile.files[0]?.name || "No file selected."
+            })
+            els.retryMicBtn.addEventListener("click", startMic)
+            els.startBtn.addEventListener("click", startSession)
+            els.pauseBtn.addEventListener("click", pauseSession)
+            els.finishBtn.addEventListener("click", finishSession)
+            els.closeFinalBtn.addEventListener("click", () => els.finalModal.close())
+            els.latencyInput.addEventListener("input", () => {
+                state.latencyOffsetMs = Number(els.latencyInput.value)
+                els.latencyValue.textContent = `${state.latencyOffsetMs}ms`
+            })
+            els.applyFilterBtn.addEventListener("click", () => applyMelodyFilter(true))
+            window.addEventListener("resize", () => {
+                drawPianoRoll(getPlayerTime())
+                drawMatchChart(state.lastFrameData)
+            })
+
+            loadYouTubeApi()
+            startMic()
+            setInterval(updatePlaybackLoop, 100)
+
+            function setSetupMode(mode) {
+                state.setupMode = mode
+                const modes = ["search", "link", "upload"]
+                for (const item of modes) {
+                    els[`${item}Tab`].classList.toggle("tab-active", item === mode)
+                    els[`${item}Panel`].classList.toggle("hidden", item !== mode)
+                }
+                els.convertBtn.textContent = mode === "upload" ? "Convert file and start" : "Convert and start"
+            }
+
+            function debounceSearchYouTubeVideos() {
+                window.clearTimeout(state.searchTimer)
+                const query = els.searchInput.value.trim()
+                if (!query) {
+                    state.selectedYoutubeUrl = ""
+                    state.selectedYoutubeTitle = ""
+                    els.searchResults.innerHTML = ""
+                    return
+                }
+                state.searchTimer = window.setTimeout(searchYouTubeVideos, SEARCH_DEBOUNCE_MS)
+            }
+
+            async function searchYouTubeVideos() {
+                const query = els.searchInput.value.trim()
+                if (!query) {
+                    setMessage("error", "Enter a YouTube search term.")
+                    return
+                }
+
+                const requestId = ++state.searchRequestId
+                els.searchBtn.disabled = true
+                els.searchResults.innerHTML = `<div class="rounded-box bg-base-200 p-4 text-sm">Searching...</div>`
+                try {
+                    const results = await fetchJson(`${API_BASE}/convert/youtube/search?q=${encodeURIComponent(query)}&limit=6`)
+                    if (requestId !== state.searchRequestId) return
+                    renderSearchResults(results)
+                } catch (error) {
+                    if (requestId !== state.searchRequestId) return
+                    els.searchResults.innerHTML = ""
+                    setMessage("error", error.message)
+                } finally {
+                    if (requestId === state.searchRequestId) {
+                        els.searchBtn.disabled = false
+                    }
+                }
+            }
+
+            function renderSearchResults(results) {
+                if (results.length === 0) {
+                    els.searchResults.innerHTML = `<div class="rounded-box bg-base-200 p-4 text-sm">No videos found.</div>`
+                    return
+                }
+
+                els.searchResults.innerHTML = results
+                    .map(
+                        (item, index) => `
+                            <button class="search-result flex gap-3 rounded-box border border-base-300 bg-base-100 p-3 text-left hover:bg-base-200" type="button" data-index="${index}">
+                                <img class="h-16 w-24 rounded object-cover bg-base-300" src="${item.thumbnail || ""}" alt="" />
+                                <span class="min-w-0">
+                                    <span class="block line-clamp-2 font-semibold">${escapeHtml(item.title)}</span>
+                                    <span class="mt-1 block text-sm text-base-content/60">${escapeHtml(item.channel || "YouTube")} · ${formatDuration(item.duration)} · ${formatViewCount(item.view_count)} views</span>
+                                </span>
+                            </button>
+                        `,
+                    )
+                    .join("")
+
+                els.searchResults.querySelectorAll(".search-result").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const item = results[Number(button.dataset.index)]
+                        state.selectedYoutubeUrl = item.url
+                        state.selectedYoutubeTitle = item.title
+                        els.youtubeUrl.value = item.url
+                        els.songTitle.textContent = item.title
+                        els.searchResults.querySelectorAll(".search-result").forEach((node) => node.classList.remove("border-primary", "bg-primary/10"))
+                        button.classList.add("border-primary", "bg-primary/10")
+                    })
+                })
+            }
+
+            async function convertYouTube() {
+                if (state.setupMode === "upload") {
+                    await convertUpload()
+                    return
+                }
+
+                const url = state.setupMode === "search" ? state.selectedYoutubeUrl : els.youtubeUrl.value.trim()
+                const videoId = extractYouTubeVideoId(url)
+                if (!videoId) {
+                    setMessage("error", state.setupMode === "search" ? "Choose a search result first." : "Invalid YouTube URL.")
+                    return
+                }
+
+                await ensurePlayer(videoId)
+                beginConvertUi("Converting YouTube audio to MIDI with Basic Pitch...")
+
+                try {
+                    const response = await fetch(`${API_BASE}/convert`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url }),
+                    })
+                    if (!response.ok) {
+                        throw new Error(await response.text())
+                    }
+
+                    const job = await response.json()
+                    await loadConvertJob(job)
+                } catch (error) {
+                    els.setupReferenceState.textContent = "Failed"
+                    setMessage("error", error.message)
+                } finally {
+                    els.convertBtn.disabled = false
+                }
+            }
+
+            async function convertUpload() {
+                const file = els.audioFile.files[0]
+                if (!file) {
+                    setMessage("error", "Choose an audio file first.")
+                    return
+                }
+
+                destroyPlayer()
+                beginConvertUi("Converting uploaded audio to MIDI with Basic Pitch...")
+
+                try {
+                    const form = new FormData()
+                    form.append("file", file)
+                    const response = await fetch(`${API_BASE}/convert/upload`, {
+                        method: "POST",
+                        body: form,
+                    })
+                    if (!response.ok) {
+                        throw new Error(await response.text())
+                    }
+                    const job = await response.json()
+                    await loadConvertJob(job)
+                    els.songTitle.textContent = file.name
+                } catch (error) {
+                    els.setupReferenceState.textContent = "Failed"
+                    setMessage("error", error.message)
+                } finally {
+                    els.convertBtn.disabled = false
+                }
+            }
+
+            async function loadConvertJob(job) {
+                if (job.status === "done" && job.result_url) {
+                    loadReference(await fetchJson(job.result_url))
+                    enterScoringScreen()
+                    return
+                }
+                await waitForConvertDone(job.events_url)
+            }
+
+            function beginConvertUi(message) {
+                setMessage("loading", message)
+                els.setupReferenceState.textContent = "Converting"
+                setConvertProgress(3)
+                els.convertBtn.disabled = true
+            }
+
+            function waitForConvertDone(eventsUrl) {
+                return new Promise((resolve, reject) => {
+                    const events = new EventSource(eventsUrl)
+                    events.addEventListener("status", (event) => {
+                        const payload = JSON.parse(event.data)
+                        setConvertProgress(payload.progress || 0)
+                        setMessage("loading", `Processing: ${payload.step || "unknown"} (${payload.progress || 0}%)`)
+                    })
+                    events.addEventListener("done", (event) => {
+                        const payload = JSON.parse(event.data)
+                        events.close()
+                        loadReference(payload)
+                        enterScoringScreen()
+                        resolve()
+                    })
+                    events.addEventListener("error", (event) => {
+                        events.close()
+                        reject(new Error(event.data || "Convert stream failed."))
+                    })
+                })
+            }
+
+            function loadReference(result) {
+                state.metadata = result.metadata
+                state.rawNotes = decodeNotes(result.notes_base64)
+                state.songId = result.metadata.song_id
+                applyMelodyFilter(false)
+                els.setupReferenceState.textContent = "Loaded"
+                els.songTitle.textContent = state.selectedYoutubeTitle || result.metadata.source_name || `Song ${state.songId}`
+                setConvertProgress(100)
+                renderReferenceStats()
+                drawPianoRoll(getPlayerTime())
+            }
+
+            function enterScoringScreen() {
+                els.setupModal.classList.remove("modal-open")
+                els.appShell.classList.remove("hidden")
+                if (els.setupModal.open) els.setupModal.close()
+                requestAnimationFrame(() => {
+                    drawPianoRoll(getPlayerTime())
+                    drawMatchChart(state.lastFrameData)
+                    renderNoteStrip(getPlayerTime())
+                })
+                setSessionButtons("ready")
+                setMessage("success", "Reference loaded. Press Bắt đầu and sing when the song reaches a segment.")
+            }
+
+            async function startSession() {
+                if (!state.songId) return
+                if (!state.sessionStarted) {
+                    resetSessionStats()
+                    state.sessionStarted = true
+                }
+                if (state.audioContext?.state === "suspended") {
+                    await state.audioContext.resume()
+                }
+                state.sessionActive = true
+                state.player?.playVideo()
+                setSessionButtons("running")
+            }
+
+            async function pauseSession() {
+                state.sessionActive = false
+                state.player?.pauseVideo()
+                await flushScoreChunk(true)
+                setSessionButtons("paused")
+            }
+
+            async function finishSession() {
+                state.sessionActive = false
+                state.player?.pauseVideo()
+                await flushScoreChunk(true)
+                setSessionButtons("finished")
+                showFinalModal()
+            }
+
+            function resetSessionStats() {
+                state.scoreHistory = []
+                state.sessionFrames = []
+                state.lastFrameData = []
+                resetChunkBuffer()
+                els.scoreValue.textContent = "--"
+                els.pitchStatus.textContent = "--"
+                els.centsValue.textContent = "0 cents"
+                els.focusFeedback.textContent = "Sẵn sàng"
+                els.targetNoteLabel.textContent = "Nốt mục tiêu sẽ hiện khi vào đoạn hát."
+                els.matchSummary.textContent = "Sing during a segment to see matching"
+                setBreakdown("pitch", 0)
+                setBreakdown("timing", 0)
+                setBreakdown("stability", 0)
+                drawMatchChart([])
+            }
+
+            function setSessionButtons(mode) {
+                els.startBtn.disabled = mode === "running"
+                els.pauseBtn.disabled = mode !== "running"
+                els.finishBtn.disabled = mode === "ready"
+                els.startBtn.textContent = mode === "paused" || mode === "finished" ? "Tiếp tục" : "Bắt đầu"
+            }
+
+            async function startMic() {
+                els.retryMicBtn.classList.add("hidden")
+                els.setupMicState.textContent = "Requesting..."
+                try {
+                    state.micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: false,
+                        },
+                    })
+                    state.audioContext = new AudioContext()
+                    state.source = state.audioContext.createMediaStreamSource(state.micStream)
+                    state.processor = state.audioContext.createScriptProcessor(4096, 1, 1)
+                    state.monitorGain = state.audioContext.createGain()
+                    state.monitorGain.gain.value = 0
+                    state.processor.onaudioprocess = handleMicAudio
+                    state.source.connect(state.processor)
+                    state.processor.connect(state.monitorGain)
+                    state.monitorGain.connect(state.audioContext.destination)
+
+                    els.setupMicState.textContent = "Ready"
+                    setMicState("Mic ready", "badge-success")
+                } catch (error) {
+                    els.setupMicState.textContent = "Permission needed"
+                    els.retryMicBtn.classList.remove("hidden")
+                    setMicState("Mic blocked", "badge-error")
+                    setMessage("error", "Please allow microphone permission to enable realtime scoring.")
+                }
+            }
+
+            function handleMicAudio(event) {
+                const input = event.inputBuffer.getChannelData(0)
+                const rms = calculateRms(input)
+                const voiceLevel = Math.min(100, Math.round((rms / 0.08) * 100))
+                els.voiceMeter.style.width = `${voiceLevel}%`
+                els.voiceLevelText.textContent = `${voiceLevel}%`
+
+                const now = performance.now()
+                if (rms >= VOICE_RMS_THRESHOLD) {
+                    state.voiceActive = true
+                    state.lastVoiceAtMs = now
+                    setVoiceState("Voice detected", "badge-success")
+                } else if (now - state.lastVoiceAtMs > VOICE_HOLD_MS) {
+                    state.voiceActive = false
+                    setVoiceState("No voice", "badge-outline")
+                }
+
+                const shouldRecord =
+                    state.captureEnabled &&
+                    state.sessionActive &&
+                    state.songId &&
+                    state.activeSegIndex >= 0 &&
+                    (state.voiceActive || (state.pcmSamples > 0 && now - state.lastVoiceAtMs <= VOICE_HOLD_MS))
+
+                if (!shouldRecord) {
+                    if (state.pcmSamples > 0 && now - state.lastVoiceAtMs > VOICE_HOLD_MS) {
+                        flushScoreChunk(true)
+                    }
+                    return
+                }
+
+                if (state.chunkStartTime == null) {
+                    state.chunkStartTime = getScoringTime()
+                }
+
+                state.pcmChunks.push(new Float32Array(input))
+                state.pcmSamples += input.length
+
+                const seconds = state.pcmSamples / state.audioContext.sampleRate
+                els.chunkState.textContent = `Recording voice ${seconds.toFixed(2)}s`
+                if (seconds >= SCORE_CHUNK_SECONDS) {
+                    flushScoreChunk(false)
+                }
+            }
+
+            async function flushScoreChunk(force) {
+                if (!state.audioContext || state.pcmSamples === 0 || state.chunkStartTime == null) {
+                    return
+                }
+
+                const duration = state.pcmSamples / state.audioContext.sampleRate
+                if (duration < MIN_SCORE_CHUNK_SECONDS) {
+                    if (force) resetChunkBuffer()
+                    return
+                }
+
+                const segmentIndex = findSegmentIndexAt(state.chunkStartTime)
+                if (segmentIndex < 0) {
+                    resetChunkBuffer()
+                    return
+                }
+
+                const samples = mergePcmChunks(state.pcmChunks, state.pcmSamples)
+                const wavBlob = encodeWav(samples, state.audioContext.sampleRate)
+                const startTime = state.chunkStartTime
+                resetChunkBuffer()
+
+                const form = new FormData()
+                form.append("audio_chunk", wavBlob, "chunk.wav")
+                form.append("song_id", state.songId)
+                form.append("seg_index", String(segmentIndex))
+                form.append("start_time", String(startTime))
+                form.append("min_midi", String(state.melodyFilter.minMidi))
+                form.append("max_midi", String(state.melodyFilter.maxMidi))
+                form.append("min_note_duration", String(state.melodyFilter.minNoteDuration))
+
+                state.pendingScores += 1
+                renderPendingScores()
+                try {
+                    const response = await fetch(`${API_BASE}/score`, {
+                        method: "POST",
+                        body: form,
+                    })
+                    if (!response.ok) {
+                        throw new Error(await response.text())
+                    }
+                    renderScore(await response.json())
+                } catch (error) {
+                    setMessage("error", error.message)
+                } finally {
+                    state.pendingScores -= 1
+                    renderPendingScores()
+                }
+            }
+
+            function updatePlaybackLoop() {
+                const time = getPlayerTime()
+                const scoringTime = getScoringTime()
+                els.playbackTime.textContent = `${formatSeconds(time)}s`
+
+                const duration = Number(state.metadata?.duration || 0)
+                els.songProgress.style.width = duration > 0 ? `${Math.min(100, (time / duration) * 100)}%` : "0%"
+
+                const prepIndex = findSegmentIndexInPrepWindow(scoringTime)
+                const scoringIndex = findSegmentIndexAt(scoringTime)
+                state.captureEnabled = Boolean(state.sessionActive && state.micStream && scoringIndex >= 0)
+                state.activeSegIndex = scoringIndex
+
+                if (state.micStream) {
+                    if (!state.sessionActive) {
+                        setMicState("Mic listening", "badge-outline")
+                        flushScoreChunk(true)
+                    } else if (scoringIndex >= 0) {
+                        setMicState(state.voiceActive ? "Scoring voice" : "Sing now", state.voiceActive ? "badge-success" : "badge-warning")
+                    } else if (prepIndex >= 0) {
+                        setMicState("Prepare", "badge-warning")
+                    } else {
+                        setMicState("Mic listening", "badge-outline")
+                        flushScoreChunk(true)
+                    }
+                }
+
+                renderCurrentReference(scoringTime, prepIndex, scoringIndex)
+                drawPianoRoll(scoringTime)
+                renderNoteStrip(scoringTime)
+            }
+
+            function renderScore(result) {
+                if (state.sessionStarted) {
+                    state.scoreHistory.push(result)
+                    state.sessionFrames.push(...(result.frame_data || []))
+                }
+                els.scoreValue.textContent = Math.round(result.score)
+                setBreakdown("pitch", result.breakdown.pitch)
+                setBreakdown("timing", result.breakdown.timing)
+                setBreakdown("stability", result.breakdown.stability)
+
+                state.lastFrameData = result.frame_data || []
+                renderPitchFeedback(state.lastFrameData)
+                renderMatchSummary(state.lastFrameData)
+                drawMatchChart(state.lastFrameData)
+            }
+
+            function showFinalModal() {
+                const summary = computeSessionSummary()
+                els.finalScore.textContent = summary.averageScore === null ? "--" : String(Math.round(summary.averageScore))
+                els.finalSubtitle.textContent =
+                    summary.chunks === 0
+                        ? "Chưa có chunk nào được chấm. Hãy bấm Bắt đầu, phát video và hát trong các segment."
+                        : `${summary.chunks} chunks · ${summary.totalFrames} pitch frames · ${summary.matchRate}% khớp nốt`
+
+                els.finalStats.innerHTML = [
+                    ["Pitch", summary.pitch],
+                    ["Timing", summary.timing],
+                    ["Stability", summary.stability],
+                    ["Khớp nốt", `${summary.matchRate}%`],
+                    ["Gần đúng", `${summary.nearRate}%`],
+                    ["Lệch rõ", `${summary.offRate}%`],
+                ]
+                    .map(
+                        ([label, value]) => `
+                            <div class="rounded-box border border-base-300 bg-base-200 p-4">
+                                <div class="text-xs text-base-content/60">${label}</div>
+                                <div class="mt-1 text-2xl font-semibold">${value}</div>
+                            </div>
+                        `,
+                    )
+                    .join("")
+
+                els.finalAdvice.innerHTML = buildAdvice(summary)
+                els.finalModal.showModal()
+            }
+
+            function computeSessionSummary() {
+                const chunks = state.scoreHistory.length
+                const average = (values) => (values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length)
+                const comparable = state.sessionFrames.filter((frame) => frame.cents_off !== null)
+                const match = comparable.filter((frame) => Math.abs(frame.cents_off) <= PITCH_TOLERANCE_CENTS).length
+                const near = comparable.filter((frame) => Math.abs(frame.cents_off) > PITCH_TOLERANCE_CENTS && Math.abs(frame.cents_off) <= 120).length
+                const off = comparable.length - match - near
+
+                return {
+                    chunks,
+                    totalFrames: comparable.length,
+                    averageScore: average(state.scoreHistory.map((item) => item.score)),
+                    pitch: formatMetric(average(state.scoreHistory.map((item) => item.breakdown.pitch))),
+                    timing: formatMetric(average(state.scoreHistory.map((item) => item.breakdown.timing))),
+                    stability: formatMetric(average(state.scoreHistory.map((item) => item.breakdown.stability))),
+                    matchRate: comparable.length ? Math.round((match / comparable.length) * 100) : 0,
+                    nearRate: comparable.length ? Math.round((near / comparable.length) * 100) : 0,
+                    offRate: comparable.length ? Math.round((off / comparable.length) * 100) : 0,
+                    pitchRaw: average(state.scoreHistory.map((item) => item.breakdown.pitch)) || 0,
+                    timingRaw: average(state.scoreHistory.map((item) => item.breakdown.timing)) || 0,
+                    stabilityRaw: average(state.scoreHistory.map((item) => item.breakdown.stability)) || 0,
+                }
+            }
+
+            function buildAdvice(summary) {
+                if (summary.chunks === 0) {
+                    return "Chưa đủ dữ liệu để đưa ra gợi ý. Hãy hát ít nhất vài giây trong đoạn có nốt MIDI."
+                }
+
+                const weakest = [
+                    ["pitch", summary.pitchRaw, "Ưu tiên giữ cao độ ổn định hơn. Nhìn chấm màu trên biểu đồ: xanh là trùng nốt, vàng là gần đúng, đỏ là lệch rõ."],
+                    ["timing", summary.timingRaw, "Tập vào nốt đúng nhịp hơn. Hãy bắt đầu hát sát thời điểm playhead đỏ chạm vào nốt xanh."],
+                    ["stability", summary.stabilityRaw, "Tập giữ hơi đều hơn ở các nốt dài, tránh rung không kiểm soát hoặc tụt cao độ cuối câu."],
+                ].sort((a, b) => a[1] - b[1])[0]
+
+                const offAdvice =
+                    summary.offRate > 35
+                        ? "Tỉ lệ lệch rõ còn cao, nên hạ tốc độ luyện tập hoặc tập từng segment ngắn."
+                        : "Tỉ lệ nốt khớp đang ổn, tiếp tục tập timing và độ ổn định."
+
+                return `<div class="font-semibold">Gợi ý chính</div><div class="mt-1">${weakest[2]}</div><div class="mt-3">${offAdvice}</div>`
+            }
+
+            function formatMetric(value) {
+                return value === null ? "--" : String(Math.round(value))
+            }
+
+            function renderPitchFeedback(frameData) {
+                const latest = [...frameData].reverse().find((frame) => frame.cents_off !== null)
+                if (!latest) {
+                    els.pitchStatus.textContent = "--"
+                    els.centsValue.textContent = "No comparable pitch"
+                    els.pitchHint.textContent = "Waiting for voice"
+                    els.focusFeedback.textContent = state.sessionActive ? "Hát vào đoạn có nốt" : "Sẵn sàng"
+                    positionNeedle(0, "bg-base-content")
+                    return
+                }
+
+                const cents = latest.cents_off
+                const abs = Math.abs(cents)
+                const status = abs <= PITCH_TOLERANCE_CENTS ? "Đúng nốt" : cents > 0 ? "Hơi cao" : "Hơi thấp"
+                const hint = abs <= PITCH_TOLERANCE_CENTS ? "Giữ nguyên cao độ" : cents > 0 ? "Hát thấp xuống" : "Hát cao hơn"
+                const color = abs <= PITCH_TOLERANCE_CENTS ? "bg-success" : abs <= 120 ? "bg-warning" : "bg-error"
+
+                els.pitchStatus.textContent = status
+                els.centsValue.textContent = `${Math.round(cents)} cents`
+                els.pitchHint.textContent = hint
+                els.focusFeedback.textContent = hint
+                positionNeedle(cents, color)
+            }
+
+            function renderMatchSummary(frameData) {
+                const comparable = frameData.filter((frame) => frame.cents_off !== null)
+                if (comparable.length === 0) {
+                    els.matchSummary.textContent = "No matching frames yet"
+                    return
+                }
+                const match = comparable.filter((frame) => Math.abs(frame.cents_off) <= PITCH_TOLERANCE_CENTS).length
+                const near = comparable.filter((frame) => Math.abs(frame.cents_off) > PITCH_TOLERANCE_CENTS && Math.abs(frame.cents_off) <= 120).length
+                const off = comparable.length - match - near
+                els.matchSummary.textContent = `${Math.round((match / comparable.length) * 100)}% match · ${near} near · ${off} off`
+            }
+
+            function renderCurrentReference(time, prepIndex, scoringIndex) {
+                const note = melodyNoteAt(time)
+                els.currentNote.textContent = note
+                    ? `Target MIDI ${Math.round(note.midi)} from ${formatSeconds(note.start)}s to ${formatSeconds(note.end)}s`
+                    : "No active reference note"
+                els.targetNoteLabel.textContent = note
+                    ? `Nốt mục tiêu: ${noteName(note.midi)} · ${formatSeconds(note.start)}s-${formatSeconds(note.end)}s`
+                    : "Không có nốt mục tiêu ở thời điểm này."
+
+                if (scoringIndex >= 0) {
+                    const seg = state.segments[scoringIndex]
+                    els.segmentBadge.className = "badge badge-success"
+                    els.segmentBadge.textContent = `Segment ${scoringIndex + 1}: ${formatSeconds(seg.start)}s-${formatSeconds(seg.end)}s`
+                } else if (prepIndex >= 0) {
+                    const seg = state.segments[prepIndex]
+                    els.segmentBadge.className = "badge badge-warning"
+                    els.segmentBadge.textContent = `Prepare ${formatSeconds(seg.start)}s`
+                } else {
+                    els.segmentBadge.className = "badge badge-outline"
+                    els.segmentBadge.textContent = "No segment"
+                }
+            }
+
+            function renderReferenceStats() {
+                const items = [
+                    ["Song ID", state.songId],
+                    ["Duration", `${formatSeconds(state.metadata.duration)}s`],
+                    ["Raw notes", state.rawNotes.length],
+                    ["Melody notes", state.notes.length],
+                    ["Segments", state.segments.length],
+                    ["Engine", state.metadata.transcription_engine || "unknown"],
+                ]
+                els.referenceStats.innerHTML = items
+                    .map(
+                        ([label, value]) => `
+                            <div class="flex justify-between gap-3 border-b border-base-300 pb-2 last:border-0">
+                                <span class="text-base-content/60">${label}</span>
+                                <span class="break-all text-right font-medium">${value}</span>
+                            </div>
+                        `,
+                    )
+                    .join("")
+            }
+
+            function applyMelodyFilter(shouldRedraw) {
+                const minMidi = clampInt(Number(els.minMidiInput.value), 0, 127, 48)
+                const maxMidi = clampInt(Number(els.maxMidiInput.value), minMidi, 127, 84)
+                const minNoteDuration = Math.max(0, Number(els.minNoteMsInput.value || 0) / 1000)
+                state.melodyFilter = { minMidi, maxMidi, minNoteDuration }
+
+                const filtered = state.rawNotes.filter(
+                    (note) => note.midi >= minMidi && note.midi <= maxMidi && note.duration >= minNoteDuration,
+                )
+                state.notes = buildMelodyLine(filtered)
+                state.segments = buildSegmentsFromNotes(state.notes, 2.0)
+                els.filterStats.textContent = `${state.notes.length}/${state.rawNotes.length} melody notes · ${noteName(minMidi)}-${noteName(maxMidi)} · min ${Math.round(minNoteDuration * 1000)}ms`
+
+                if (shouldRedraw) {
+                    renderReferenceStats()
+                    drawPianoRoll(getScoringTime())
+                    renderNoteStrip(getScoringTime())
+                    drawMatchChart([])
+                    state.lastFrameData = []
+                    state.sessionFrames = []
+                    state.scoreHistory = []
+                }
+            }
+
+            function buildMelodyLine(notes) {
+                return notes
+                    .filter((note) => {
+                        const active = notes.filter((item) => item.start <= note.start && note.start < item.end)
+                        const highest = Math.max(...active.map((item) => item.midi))
+                        return note.midi === highest
+                    })
+                    .sort((a, b) => a.start - b.start || b.midi - a.midi)
+            }
+
+            function buildSegmentsFromNotes(notes, gapSeconds) {
+                if (notes.length === 0) return []
+                const sorted = [...notes].sort((a, b) => a.start - b.start)
+                const segments = []
+                let start = sorted[0].start
+                let end = sorted[0].end
+                for (const note of sorted.slice(1)) {
+                    if (note.start - end < gapSeconds) {
+                        end = Math.max(end, note.end)
+                    } else {
+                        segments.push({ start, end })
+                        start = note.start
+                        end = note.end
+                    }
+                }
+                segments.push({ start, end })
+                return segments
+            }
+
+            function renderNoteStrip(time) {
+                const upcoming = state.notes
+                    .filter((note) => isMelodyNote(note) && note.end >= time - 0.25 && note.start <= time + 8)
+                    .slice(0, 18)
+
+                if (upcoming.length === 0) {
+                    els.noteStrip.innerHTML = `<div class="text-sm text-base-content/60">No upcoming notes.</div>`
+                    return
+                }
+
+                els.noteStrip.innerHTML = upcoming
+                    .map((note) => {
+                        const active = note.start <= time && time < note.end
+                        const past = note.end < time
+                        const className = active
+                            ? "border-primary bg-primary text-primary-content"
+                            : past
+                              ? "border-base-300 bg-base-200 text-base-content/50"
+                              : "border-base-300 bg-base-100"
+                        return `
+                            <div class="min-w-20 rounded-box border px-3 py-2 text-center ${className}">
+                                <div class="text-base font-semibold">${noteName(note.midi)}</div>
+                                <div class="text-xs opacity-75">${formatSeconds(note.start)}s</div>
+                            </div>
+                        `
+                    })
+                    .join("")
+            }
+
+            function drawPianoRoll(time) {
+                const { ctx, width, height } = prepareCanvas(els.pianoRoll)
+                ctx.clearRect(0, 0, width, height)
+
+                const windowSeconds = 10
+                const start = time - 2
+                const end = start + windowSeconds
+                const visible = state.notes.filter((note) => note.end >= start && note.start <= end)
+                const minMidi = Math.min(48, ...visible.map((note) => note.midi))
+                const maxMidi = Math.max(84, ...visible.map((note) => note.midi))
+                const midiRange = Math.max(1, maxMidi - minMidi)
+
+                ctx.fillStyle = "#e5e7eb"
+                for (let i = 0; i <= 4; i += 1) {
+                    const y = (height / 4) * i
+                    ctx.fillRect(0, y, width, 1)
+                }
+
+                for (const note of visible) {
+                    const x = ((note.start - start) / windowSeconds) * width
+                    const w = Math.max(4, (note.duration / windowSeconds) * width)
+                    const y = height - ((note.midi - minMidi) / midiRange) * height
+                    ctx.fillStyle = isMelodyNote(note) ? "#2563eb" : "rgba(37, 99, 235, 0.25)"
+                    ctx.fillRect(x, Math.max(2, y - 7), w, 10)
+                }
+
+                const playheadX = ((time - start) / windowSeconds) * width
+                ctx.fillStyle = "#dc2626"
+                ctx.fillRect(playheadX, 0, 2, height)
+            }
+
+            function drawMatchChart(frameData) {
+                const { ctx, width, height } = prepareCanvas(els.matchChart)
+                ctx.clearRect(0, 0, width, height)
+
+                const points = frameData.filter((frame) => frame.ref_hz !== null)
+                if (points.length === 0) {
+                    drawCenteredText(ctx, width, height, "Waiting for scoring data")
+                    return
+                }
+
+                const minT = points[0].t
+                const maxT = points[points.length - 1].t
+                const rangeT = Math.max(0.001, maxT - minT)
+                const midiValues = points.flatMap((frame) => [hzToMidi(frame.ref_hz), frame.user_hz ? hzToMidi(frame.user_hz) : hzToMidi(frame.ref_hz)])
+                const minMidi = Math.floor(Math.min(...midiValues) - 2)
+                const maxMidi = Math.ceil(Math.max(...midiValues) + 2)
+                const midiRange = Math.max(1, maxMidi - minMidi)
+
+                ctx.fillStyle = "#f8fafc"
+                ctx.fillRect(0, 0, width, height)
+                ctx.fillStyle = "rgba(34, 197, 94, 0.16)"
+                ctx.fillRect(0, 0, width, height)
+                ctx.strokeStyle = "#cbd5e1"
+                ctx.lineWidth = 1
+                const firstGrid = Math.ceil(minMidi)
+                const lastGrid = Math.floor(maxMidi)
+                for (let midi = firstGrid; midi <= lastGrid; midi += 1) {
+                    const y = height - ((midi - minMidi) / midiRange) * height
+                    ctx.beginPath()
+                    ctx.moveTo(0, y)
+                    ctx.lineTo(width, y)
+                    ctx.stroke()
+                    if (midi % 2 === 0) {
+                        ctx.fillStyle = "#64748b"
+                        ctx.font = "11px sans-serif"
+                        ctx.fillText(noteName(midi), 6, y - 3)
+                    }
+                }
+
+                drawMidiLine(ctx, points, minT, rangeT, minMidi, midiRange, width, height, "ref_hz", "#2563eb", 3)
+
+                for (const frame of points) {
+                    if (frame.user_hz === null || frame.cents_off === null) continue
+                    const x = ((frame.t - minT) / rangeT) * width
+                    const refY = height - ((hzToMidi(frame.ref_hz) - minMidi) / midiRange) * height
+                    const userY = height - ((hzToMidi(frame.user_hz) - minMidi) / midiRange) * height
+                    ctx.strokeStyle = matchColor(frame.cents_off)
+                    ctx.lineWidth = 1.5
+                    ctx.beginPath()
+                    ctx.moveTo(x, refY)
+                    ctx.lineTo(x, userY)
+                    ctx.stroke()
+                    ctx.fillStyle = matchColor(frame.cents_off)
+                    ctx.beginPath()
+                    ctx.arc(x, userY, 4, 0, Math.PI * 2)
+                    ctx.fill()
+                }
+
+                ctx.fillStyle = "#1f2937"
+                ctx.font = "12px sans-serif"
+                ctx.fillText("Blue line: MIDI target. Colored dots: your voice. Short vertical line: distance from target.", 10, height - 10)
+            }
+
+            function drawMidiLine(ctx, points, minT, rangeT, minMidi, midiRange, width, height, key, color, lineWidth) {
+                ctx.strokeStyle = color
+                ctx.lineWidth = lineWidth
+                ctx.beginPath()
+                points.forEach((frame, index) => {
+                    const x = ((frame.t - minT) / rangeT) * width
+                    const y = height - ((hzToMidi(frame[key]) - minMidi) / midiRange) * height
+                    if (index === 0) ctx.moveTo(x, y)
+                    else ctx.lineTo(x, y)
+                })
+                ctx.stroke()
+            }
+
+            function setBreakdown(name, value) {
+                const rounded = Math.round(value)
+                els[`${name}Breakdown`].textContent = String(rounded)
+                els[`${name}Bar`].value = rounded
+            }
+
+            function positionNeedle(cents, colorClass) {
+                const percent = Math.max(4, Math.min(96, 50 + (Math.max(-300, Math.min(300, cents)) / 300) * 46))
+                els.pitchNeedle.className = `absolute top-2 h-10 w-2 rounded-full transition-all ${colorClass}`
+                els.pitchNeedle.style.left = `calc(${percent}% - 4px)`
+            }
+
+            function setMicState(text, badgeClass) {
+                els.micState.className = `badge ${badgeClass}`
+                els.micState.textContent = text
+            }
+
+            function setVoiceState(text, badgeClass) {
+                els.voiceBadge.className = `badge ${badgeClass}`
+                els.voiceBadge.textContent = text
+            }
+
+            function renderPendingScores() {
+                els.pendingCount.textContent = `${state.pendingScores} pending`
+                if (state.pendingScores === 0 && state.captureEnabled) {
+                    els.chunkState.textContent = state.voiceActive ? "Listening and scoring" : "Waiting for voice"
+                } else if (state.pendingScores === 0) {
+                    els.chunkState.textContent = "Idle"
+                }
+            }
+
+            function decodeNotes(notesBase64) {
+                const bytes = Uint8Array.from(atob(notesBase64), (char) => char.charCodeAt(0))
+                const raw = new Float32Array(bytes.buffer)
+                const notes = []
+                for (let i = 0; i < raw.length; i += 3) {
+                    const start = raw[i]
+                    const midi = raw[i + 1]
+                    const duration = raw[i + 2]
+                    notes.push({ start, midi, duration, end: start + duration })
+                }
+                return notes
+            }
+
+            function melodyNoteAt(time) {
+                const active = state.notes.filter((note) => note.start <= time && time < note.end)
+                if (active.length === 0) return null
+                return active.reduce((best, note) => (note.midi > best.midi ? note : best), active[0])
+            }
+
+            function isMelodyNote(note) {
+                const activeAtStart = state.notes.filter((item) => item.start <= note.start && note.start < item.end)
+                return activeAtStart.length === 0 || note.midi === Math.max(...activeAtStart.map((item) => item.midi))
+            }
+
+            function findSegmentIndexAt(time) {
+                return state.segments.findIndex((segment) => segment.start <= time && time <= segment.end)
+            }
+
+            function findSegmentIndexInPrepWindow(time) {
+                return state.segments.findIndex((segment) => segment.start - PREP_SECONDS <= time && time <= segment.end)
+            }
+
+            function getPlayerTime() {
+                if (!state.playerReady || !state.player?.getCurrentTime) return 0
+                return Number(state.player.getCurrentTime() || 0)
+            }
+
+            function getScoringTime() {
+                return Math.max(0, getPlayerTime() + state.latencyOffsetMs / 1000)
+            }
+
+            async function fetchJson(url) {
+                const response = await fetch(url)
+                if (!response.ok) throw new Error(await response.text())
+                return response.json()
+            }
+
+            function setConvertProgress(value) {
+                els.convertProgress.classList.remove("hidden")
+                els.convertProgress.value = value
+            }
+
+            function setMessage(type, text) {
+                const classByType = {
+                    loading: "alert alert-info",
+                    success: "alert alert-success",
+                    error: "alert alert-error",
+                }
+                els.message.className = classByType[type] || "alert"
+                els.message.textContent = text
+                els.message.classList.remove("hidden")
+            }
+
+            function calculateRms(samples) {
+                let sum = 0
+                for (const sample of samples) sum += sample * sample
+                return Math.sqrt(sum / samples.length)
+            }
+
+            function matchColor(cents) {
+                const abs = Math.abs(cents)
+                if (abs <= PITCH_TOLERANCE_CENTS) return "#16a34a"
+                if (abs <= 120) return "#f59e0b"
+                return "#dc2626"
+            }
+
+            function hzToMidi(hz) {
+                return 69 + 12 * Math.log2(hz / 440)
+            }
+
+            function noteName(midi) {
+                const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                const rounded = Math.round(midi)
+                return `${names[((rounded % 12) + 12) % 12]}${Math.floor(rounded / 12) - 1}`
+            }
+
+            function formatDuration(seconds) {
+                if (seconds == null || Number.isNaN(Number(seconds))) return "--:--"
+                const total = Math.round(Number(seconds))
+                const minutes = Math.floor(total / 60)
+                return `${minutes}:${String(total % 60).padStart(2, "0")}`
+            }
+
+            function formatViewCount(value) {
+                if (value == null || Number.isNaN(Number(value))) return "--"
+                return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value))
+            }
+
+            function escapeHtml(value) {
+                const div = document.createElement("div")
+                div.textContent = String(value ?? "")
+                return div.innerHTML
+            }
+
+            function clampInt(value, min, max, fallback) {
+                if (!Number.isFinite(value)) return fallback
+                return Math.max(min, Math.min(max, Math.round(value)))
+            }
+
+            function mergePcmChunks(chunks, totalSamples) {
+                const output = new Float32Array(totalSamples)
+                let offset = 0
+                for (const chunk of chunks) {
+                    output.set(chunk, offset)
+                    offset += chunk.length
+                }
+                return output
+            }
+
+            function resetChunkBuffer() {
+                state.pcmChunks = []
+                state.pcmSamples = 0
+                state.chunkStartTime = null
+            }
+
+            function encodeWav(samples, sampleRate) {
+                const buffer = new ArrayBuffer(44 + samples.length * 2)
+                const view = new DataView(buffer)
+                writeAscii(view, 0, "RIFF")
+                view.setUint32(4, 36 + samples.length * 2, true)
+                writeAscii(view, 8, "WAVE")
+                writeAscii(view, 12, "fmt ")
+                view.setUint32(16, 16, true)
+                view.setUint16(20, 1, true)
+                view.setUint16(22, 1, true)
+                view.setUint32(24, sampleRate, true)
+                view.setUint32(28, sampleRate * 2, true)
+                view.setUint16(32, 2, true)
+                view.setUint16(34, 16, true)
+                writeAscii(view, 36, "data")
+                view.setUint32(40, samples.length * 2, true)
+
+                let offset = 44
+                for (const sample of samples) {
+                    const value = Math.max(-1, Math.min(1, sample))
+                    view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true)
+                    offset += 2
+                }
+                return new Blob([view], { type: "audio/wav" })
+            }
+
+            function writeAscii(view, offset, text) {
+                for (let i = 0; i < text.length; i += 1) {
+                    view.setUint8(offset + i, text.charCodeAt(i))
+                }
+            }
+
+            function prepareCanvas(canvas) {
+                const rect = canvas.getBoundingClientRect()
+                const ratio = window.devicePixelRatio || 1
+                canvas.width = Math.max(1, Math.floor(rect.width * ratio))
+                canvas.height = Math.max(1, Math.floor(rect.height * ratio))
+                const ctx = canvas.getContext("2d")
+                ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+                return { ctx, width: rect.width, height: rect.height }
+            }
+
+            function drawCenteredText(ctx, width, height, text) {
+                ctx.fillStyle = "#64748b"
+                ctx.font = "14px sans-serif"
+                ctx.textAlign = "center"
+                ctx.fillText(text, width / 2, height / 2)
+            }
+
+            function extractYouTubeVideoId(input) {
+                try {
+                    const url = new URL(input)
+                    if (url.hostname.includes("youtu.be")) return url.pathname.slice(1)
+                    if (url.pathname === "/watch") return url.searchParams.get("v")
+                    const parts = url.pathname.split("/").filter(Boolean)
+                    if (["embed", "shorts", "live"].includes(parts[0])) return parts[1]
+                } catch {
+                    return input.trim() || null
+                }
+                return null
+            }
+
+            function loadYouTubeApi() {
+                window.onYouTubeIframeAPIReady = () => {}
+                const script = document.createElement("script")
+                script.src = "https://www.youtube.com/iframe_api"
+                document.head.appendChild(script)
+            }
+
+            function ensurePlayer(videoId) {
+                return new Promise((resolve) => {
+                    const createOrLoad = () => {
+                        if (state.player) {
+                            state.player.loadVideoById(videoId)
+                            resolve()
+                            return
+                        }
+                        state.player = new YT.Player("player", {
+                            videoId,
+                            playerVars: {
+                                controls: 1,
+                                rel: 0,
+                                modestbranding: 1,
+                            },
+                            events: {
+                                onReady: () => {
+                                    state.playerReady = true
+                                    resolve()
+                                },
+                            },
+                        })
+                    }
+
+                    if (window.YT?.Player) createOrLoad()
+                    else window.onYouTubeIframeAPIReady = createOrLoad
+                })
+            }
+
+            function destroyPlayer() {
+                if (state.player?.destroy) {
+                    state.player.destroy()
+                }
+                state.player = null
+                state.playerReady = false
+            }
+
+            function formatSeconds(value) {
+                return Number(value || 0).toFixed(3)
+            }
+        </script>
+    </body>
+</html>
+
