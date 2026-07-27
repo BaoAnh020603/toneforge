@@ -36,7 +36,7 @@ import {
 import { UpgradeModal } from "../../components/UpgradeModal";
 import { useAlert } from "../../contexts/AlertContext";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || "http://localhost:8000";
 
 export default function DashboardUpload() {
   const { showAlert } = useAlert();
