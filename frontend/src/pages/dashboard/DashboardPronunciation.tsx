@@ -8,7 +8,11 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAlert } from "../../contexts/AlertContext";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+function getGeminiClient() {
+  const browserKey = (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY;
+  if (!browserKey) return null;
+  return new GoogleGenAI({ apiKey: browserKey });
+}
 
 const EXERCISES = [
   {
@@ -158,6 +162,11 @@ export default function DashboardPronunciation() {
 
   const handleGenerateCustomExercise = async () => {
     if (!customLyric.trim()) return;
+    const ai = getGeminiClient();
+    if (!ai) {
+      showAlert("Chưa có Gemini API key trong Vercel env. Tính năng AI tạm thời bị tắt.");
+      return;
+    }
     setIsGenerating(true);
     try {
       const promptText = `Bạn là chuyên gia luyện thanh nhạc. Người dùng cung cấp đoạn lời bài hát sau để luyện phát âm:

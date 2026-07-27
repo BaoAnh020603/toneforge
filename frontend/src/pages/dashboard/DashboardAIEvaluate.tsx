@@ -9,8 +9,10 @@ import { collection, addDoc, serverTimestamp, doc, setDoc, onSnapshot } from 'fi
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAlert } from "../../contexts/AlertContext";
 
-// Initialize fallback Gemini API
-const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+function getGeminiClient(apiKey?: string | null) {
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+}
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const MIN_MIDI = 36; // C2
@@ -150,9 +152,9 @@ export default function DashboardAIEvaluate() {
   const getCustomGenAI = () => {
     const customKey = localStorage.getItem('gemini_api_key');
     if (customKey) {
-      return { ai: new GoogleGenAI({ apiKey: customKey }), customModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash', isCustom: true };
+      return { ai: getGeminiClient(customKey), customModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash', isCustom: true };
     }
-    return { ai: defaultAi, customModel: 'gemini-3.1-pro-preview', isCustom: false };
+    return { ai: getGeminiClient((import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY), customModel: 'gemini-3.1-pro-preview', isCustom: false };
   };
 
   const checkKeyAndStartRecording = async () => {
@@ -169,6 +171,11 @@ export default function DashboardAIEvaluate() {
 
     if (isCustom) {
       setTestState('CHECKING_KEY');
+      if (!currentAi) {
+        setTestState('IDLE');
+        showAlert("Chưa có Gemini API key. Tính năng AI tạm thời bị tắt.");
+        return;
+      }
       try {
         // Quick verification of the API key
         await currentAi.models.generateContent({
@@ -345,6 +352,11 @@ export default function DashboardAIEvaluate() {
       Trình bày bằng tiếng Việt, mang tính sư phạm, khích lệ người học. Dùng gạch đầu dòng ngắn gọn, rõ ràng. Nếu file âm thanh quá ồn hoặc không phải giọng người, hãy nhắc nhở học viên thu âm lại ở nơi yên tĩnh hơn.`;
 
       const { ai: currentAi, customModel, isCustom } = getCustomGenAI();
+      if (!currentAi) {
+        showAlert("Chưa có Gemini API key. Tính năng AI tạm thời bị tắt.");
+        setTestState('RESULT');
+        return;
+      }
 
       let modelToUse = customModel;
       if (!isCustom) {

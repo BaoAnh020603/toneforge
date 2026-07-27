@@ -11,7 +11,10 @@ import { UpgradeModal } from '../../components/UpgradeModal';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useAlert } from "../../contexts/AlertContext";
 
-const defaultAi = new GoogleGenAI({ apiKey: (import.meta as any).env.VITE_GEMINI_API_KEY || "dummy_key" }); // fallback
+function getGeminiClient(apiKey?: string | null) {
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+}
 
 export default function ResultsScreen() {
   const { showAlert } = useAlert();
@@ -75,9 +78,9 @@ export default function ResultsScreen() {
   const getCustomGenAI = () => {
     const customKey = localStorage.getItem('gemini_api_key');
     if (customKey) {
-      return { ai: new GoogleGenAI({ apiKey: customKey }), customModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash', isCustom: true };
+      return { ai: getGeminiClient(customKey), customModel: localStorage.getItem('gemini_model') || 'gemini-2.5-flash', isCustom: true };
     }
-    return { ai: defaultAi, customModel: 'gemini-3.5-flash', isCustom: false };
+    return { ai: getGeminiClient((import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY), customModel: 'gemini-3.5-flash', isCustom: false };
   };
 
   useEffect(() => {
@@ -166,6 +169,11 @@ export default function ResultsScreen() {
       }
 
       const { ai: currentAi, customModel, isCustom } = getCustomGenAI();
+      if (!currentAi) {
+          setAiFeedback("Chưa có Gemini API key trên Vercel nên AI feedback đang tắt.");
+          setIsStreaming(false);
+          return;
+      }
 
       if (!currentProfile?.isVip && !isCustom) {
          const todayString = new Date().toLocaleDateString();
