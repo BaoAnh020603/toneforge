@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import shutil
 import subprocess
@@ -72,9 +72,15 @@ def download_youtube_audio(url: str, work_dir: Path, cfg: Settings = settings) -
         with yt_dlp.YoutubeDL({"quiet": True, "noplaylist": True}) as ydl:
             info = ydl.extract_info(url, download=False)
     except yt_dlp.utils.DownloadError as exc:
-        if _looks_not_found(str(exc)):
+        message = str(exc)
+        if _looks_bot_check(message):
+              raise download_failed(
+                "YouTube is asking for bot verification for this video. "
+                "Please try another public video or upload an audio file instead."
+            ) from exc
+        if _looks_not_found(message):
             raise video_not_found() from exc
-        raise download_failed(str(exc)) from exc
+        raise download_failed(message) from exc
 
     duration = float(info.get("duration") or 0.0)
     if duration > cfg.max_video_duration:
@@ -107,11 +113,23 @@ def download_youtube_audio(url: str, work_dir: Path, cfg: Settings = settings) -
             raise FileNotFoundError("yt-dlp did not create an audio file")
         source_path = max(candidates, key=lambda path: path.stat().st_mtime)
     except yt_dlp.utils.DownloadError as exc:
-        if _looks_not_found(str(exc)):
+        message = str(exc)
+        if _looks_bot_check(message):
+              raise download_failed(
+                "YouTube is asking for bot verification for this video. "
+                "Please try another public video or upload an audio file instead."
+            ) from exc
+        if _looks_not_found(message):
             raise video_not_found() from exc
-        raise download_failed(str(exc)) from exc
+        raise download_failed(message) from exc
     except Exception as exc:
-        raise download_failed(str(exc)) from exc
+        message = str(exc)
+        if _looks_bot_check(message):
+            raise download_failed(
+              "YouTube is asking for bot verification for this video. "
+              "Please try another public video or upload an audio file instead."
+          ) from exc
+        raise download_failed(message) from exc
 
     wav_path = work_dir / "audio_16k_mono.wav"
     try:
@@ -151,3 +169,17 @@ def _looks_not_found(message: str) -> bool:
     lowered = message.lower()
     markers = ["private", "unavailable", "does not exist", "removed", "not found"]
     return any(marker in lowered for marker in markers)
+
+
+def _looks_bot_check(message: str) -> bool:
+    lowered = message.lower()
+    markers = [
+        "sign in to confirm youre not a bot",
+        "sign in to confirm youre not a bot",
+        "not a bot",
+        "cookies-from-browser",
+        "cookies for the authentication",
+        "exporting youtube cookies",
+    ]
+    return any(marker in lowered for marker in markers)
+
