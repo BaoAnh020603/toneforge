@@ -7,7 +7,6 @@ import {
   Music,
   Play,
   Youtube,
-  Link as LinkIcon,
   Crown,
   Search,
   Loader2,
@@ -44,7 +43,7 @@ export default function DashboardUpload() {
   const [searchParams] = useSearchParams();
   const qParam = searchParams.get("q") || "";
 
-  const [activeTab, setActiveTab] = useState<"youtube" | "link" | "upload">(
+  const [activeTab, setActiveTab] = useState<"youtube" | "upload">(
     "youtube",
   );
   const navigate = useNavigate();
@@ -184,17 +183,6 @@ export default function DashboardUpload() {
     } finally {
       setIsSearching(false);
     }
-  };
-
-  const isYouTubeLink = (value: string) => {
-    const normalized = value.trim().toLowerCase();
-    return (
-      normalized.includes("youtube.com/watch") ||
-      normalized.includes("youtu.be/") ||
-      normalized.includes("youtube.com/shorts/") ||
-      normalized.includes("youtube.com/embed/") ||
-      normalized.includes("music.youtube.com/")
-    );
   };
 
   useEffect(() => {
@@ -824,8 +812,6 @@ export default function DashboardUpload() {
     }
   };
 
-  const [linkInput, setLinkInput] = useState("");
-
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-32">
       <div className="flex items-center gap-4 text-sm font-medium">
@@ -951,16 +937,6 @@ export default function DashboardUpload() {
                 }`}
               >
                 <Youtube className="w-5 h-5 text-red-500" /> YouTube
-              </button>
-              <button
-                onClick={() => setActiveTab("link")}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
-                  activeTab === "link"
-                    ? "bg-slate-800 text-white shadow-md"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                }`}
-              >
-                <LinkIcon className="w-4 h-4 text-blue-400" /> Dán link
               </button>
               <button
                 onClick={() => setActiveTab("upload")}
@@ -1229,44 +1205,6 @@ export default function DashboardUpload() {
                       })}
                     </div>
                   )}
-                </div>
-              )}
-
-              {activeTab === "link" && (
-                <div className="space-y-6">
-                  <div className="relative max-w-2xl mx-auto">
-                    <LinkIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                    <input
-                      type="text"
-                      value={linkInput}
-                      onChange={(e) => setLinkInput(e.target.value)}
-                      placeholder="Dán đường dẫn YouTube (ví dụ: https://youtube.com/...)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-32 py-4 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none focus:border-blue-500/50 placeholder:text-slate-600 transition-all text-lg"
-                    />
-                    <Button
-                      onClick={async () => {
-                        if (isYouTubeLink(linkInput)) {
-                          showAlert(
-                            "Link YouTube không dùng để tải âm thanh trực tiếp nữa. Hãy dùng tab Upload File để bóc tách, hoặc tab YouTube để tìm bài hát.",
-                          );
-                          return;
-                        }
-                        if (await checkUploadLimit()) {
-                          showAlert(
-                            "Luồng dán link đã được tắt cho YouTube. Vui lòng dùng Upload File để xử lý thật.",
-                          );
-                        }
-                      }}
-                      disabled={!linkInput.trim()}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 hover:bg-blue-500 text-white h-10 px-6 rounded-xl font-bold mt-[0]"
-                    >
-                      Không dùng
-                    </Button>
-                  </div>
-                  <div className="text-center text-sm text-slate-500 mt-2">
-                    Hãy dùng tab Upload File để bóc tách thật sự. YouTube ở đây
-                    chủ yếu để tìm bài và kiểm tra thông tin.
-                  </div>
                 </div>
               )}
 
