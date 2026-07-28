@@ -35,7 +35,7 @@ import {
 } from "firebase/firestore";
 import { UpgradeModal } from "../../components/UpgradeModal";
 import { useAlert } from "../../contexts/AlertContext";
-import { extractYouTubeVideoId } from "../../lib/voiceApi";
+import { createUploadConvertJob } from "../../lib/voiceApi";
 
 const API_BASE = (import.meta as any).env.VITE_PYTHON_API_BASE || "http://localhost:8000";
 
@@ -60,6 +60,9 @@ export default function DashboardUpload() {
   const [convertProgress, setConvertProgress] = useState(0);
   const [convertStep, setConvertStep] = useState("");
   const [convertError, setConvertError] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   // Selection state
   const [selectedSong, setSelectedSong] = useState<any>(null);
@@ -168,26 +171,6 @@ export default function DashboardUpload() {
   const handleSearch = async (queryToSearch?: string) => {
     const q = queryToSearch || searchQuery;
     if (!q.trim()) return;
-
-    const maybeVideoId = extractYouTubeVideoId(q);
-    const isDirectYouTubeUrl =
-      !!maybeVideoId &&
-      (q.includes("youtube.com/watch") ||
-        q.includes("youtu.be/") ||
-        q.includes("youtube.com/shorts/") ||
-        q.includes("youtube.com/embed/"));
-
-    if (isDirectYouTubeUrl) {
-      await startConversion(q, {
-        id: maybeVideoId,
-        video_id: maybeVideoId,
-        url: q,
-        title: q,
-        channel: "YouTube",
-        thumbnail: `https://i.ytimg.com/vi/${maybeVideoId}/hqdefault.jpg`,
-      });
-      return;
-    }
 
     setIsSearching(true);
     try {
@@ -608,6 +591,114 @@ export default function DashboardUpload() {
         "Có lỗi xảy ra kết nối server.";
       setConvertError(backendMessage);
       // Bỏ setIsConverting(false) để UI giữ lại thanh loading và hiển thị form báo lỗi
+    }
+  };
+
+  const handleUploadFile = async () => {
+    if (!uploadFile) return;
+    if (!auth.currentUser) {
+      showAlert("Bạn cần đăng nhập để thao tác");
+      return;
+    }
+    if (!(await checkUploadLimit())) return;
+
+    setProcessingSong({
+      title: uploadFile.name,
+      image: "",
+      channel: "Upload file",
+    });
+    setIsUploading(true);
+    setConvertProgress(0);
+    setConvertStep("Đang tải file lên...");
+    setConvertError(null);
+
+    try {
+      const data = await createUploadConvertJob(uploadFile);
+      const jobId = data.job_id;
+      const pythonSongId = data.song_id;
+      const sourceData = {
+        title: uploadFile.name,
+        channel: "Upload file",
+        sourceType: "upload",
+        filename: uploadFile.name,
+      };
+
+      console.log(`Connecting to SSE: ${API_BASE}/convert/${jobId}/events`);
+      const eventSource = new EventSource(
+        `${API_BASE}/convert/${jobId}/events`,
+      );
+
+      eventSource.onopen = () => {
+        setConvertStep("Đang kết nối tới máy chủ phân tích...");
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const eData = JSON.parse(event.data);
+          if (eData.progress !== undefined) setConvertProgress(eData.progress);
+          if (eData.step) setConvertStep(eData.step);
+        } catch (e) {
+          console.error("Progress parse error:", e);
+        }
+      };
+
+      eventSource.addEventListener("status", (event: any) => {
+        try {
+          const eData = JSON.parse(event.data);
+          if (eData.progress !== undefined) setConvertProgress(eData.progress);
+          if (eData.step) setConvertStep(eData.step);
+        } catch (e) {
+          console.error("Status parse error:", e);
+        }
+      });
+
+      eventSource.addEventListener("error", (event: any) => {
+        if (event.data) {
+          try {
+            const eData = JSON.parse(event.data);
+            setConvertError(
+              eData.error_detail ||
+                eData.message ||
+                eData.error ||
+                "Lỗi xử lý file âm thanh.",
+            );
+          } catch {
+            setConvertError("Lỗi không xác định từ server.");
+          }
+          eventSource.close();
+        } else if (eventSource.readyState === EventSource.CLOSED) {
+          setConvertError("Mất kết nối tới server xử lý.");
+          eventSource.close();
+        }
+      });
+
+      eventSource.addEventListener("done", async (event: any) => {
+        eventSource.close();
+        setConvertStep("Lưu vào thư viện...");
+        setConvertProgress(100);
+        try {
+          const result = JSON.parse(event.data);
+          await saveToLibrary(
+            result,
+            pythonSongId,
+            jobId,
+            `upload://${uploadFile.name}`,
+            sourceData,
+          );
+          setUploadFile(null);
+          if (uploadInputRef.current) {
+            uploadInputRef.current.value = "";
+          }
+        } catch (e) {
+          console.error("Save error:", e);
+          setConvertError("Lỗi khi lưu bài hát: " + e);
+        }
+      });
+    } catch (error: any) {
+      console.error("Upload convert:", error);
+      setConvertError(error?.message || "Có lỗi xảy ra khi tải file lên.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -1119,7 +1210,7 @@ export default function DashboardUpload() {
                                 className="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-violet-950/20"
                               >
                                 <Music2 className="w-3.5 h-3.5 shrink-0" />
-                                <span>Tách AI</span>
+                                <span>Chọn bài</span>
                               </button>
                             </div>
                           </div>
@@ -1153,30 +1244,47 @@ export default function DashboardUpload() {
                     </Button>
                   </div>
                   <div className="text-center text-sm text-slate-500 mt-2">
-                    Hỗ trợ trích xuất âm thanh, tách lời ca sĩ và tạo nốt MIDI
-                    chuẩn.
+                    Hãy dùng tab Upload File để bóc tách thật sự. YouTube ở đây
+                    chủ yếu để tìm bài và kiểm tra thông tin.
                   </div>
                 </div>
               )}
 
               {activeTab === "upload" && (
                 <div>
-                  <div className="border-2 border-dashed border-slate-700/50 hover:border-violet-500/50 rounded-3xl p-12 flex flex-col items-center justify-center text-center bg-slate-950/30 hover:bg-slate-800/30 transition-colors mx-auto max-w-2xl cursor-not-allowed opacity-70 relative overflow-hidden group">
+                  <div className="border-2 border-dashed border-slate-700/50 hover:border-violet-500/50 rounded-3xl p-12 flex flex-col items-center justify-center text-center bg-slate-950/30 hover:bg-slate-800/30 transition-colors mx-auto max-w-2xl relative overflow-hidden group">
                     <div className="w-16 h-16 rounded-full bg-violet-600/10 text-violet-400 flex items-center justify-center mb-4 relative z-10">
                       <UploadCloud className="w-8 h-8" />
                     </div>
                     <h3 className="text-lg font-semibold text-white mb-1 relative z-10">
-                      Tải lên File Âm thanh/Video
+                      Tải lên File Âm thanh
                     </h3>
                     <p className="text-slate-400 text-sm mb-6 relative z-10">
-                      Tính năng đang phát triển. Vui lòng sử dụng YouTube tạm
-                      thời.
+                      Chọn file MP3, WAV, FLAC, M4A hoặc OGG để AI bóc tách
+                      và chấm điểm.
                     </p>
 
-                    <div className="mt-4 flex items-center justify-center gap-2 text-xs font-bold text-amber-500 bg-amber-500/10 px-4 py-2 rounded-lg border border-amber-500/20 relative z-10">
-                      <Crown className="w-4 h-4" />
-                      TÍNH NĂNG V.I.P SẮP RA MẮT
-                    </div>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept=".mp3,.wav,.flac,.m4a,.ogg,audio/*,video/*"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      className="block w-full max-w-lg mx-auto text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-violet-600 file:px-4 file:py-2 file:text-white hover:file:bg-violet-500 relative z-10"
+                    />
+
+                    {uploadFile && (
+                      <p className="mt-4 text-xs text-slate-400 relative z-10">
+                        Đã chọn: <span className="text-white">{uploadFile.name}</span>
+                      </p>
+                    )}
+
+                    <Button
+                      onClick={handleUploadFile}
+                      disabled={!uploadFile || isUploading}
+                      className="mt-6 bg-violet-600 hover:bg-violet-500 text-white font-bold px-6 rounded-xl relative z-10"
+                    >
+                      {isUploading ? "Đang tải lên..." : "Bắt đầu bóc tách"}
+                    </Button>
                   </div>
                 </div>
               )}

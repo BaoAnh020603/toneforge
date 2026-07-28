@@ -100,6 +100,16 @@ export function createConvertJob(url: string) {
     })
 }
 
+export function createUploadConvertJob(file: File) {
+    const form = new FormData()
+    form.append("file", file)
+
+    return fetchApiJson<ConvertJob>("/convert/upload", {
+        method: "POST",
+        body: form,
+    })
+}
+
 export function getConvertResult(url: string) {
     return fetchApiJson<ConvertResult>(url)
 }

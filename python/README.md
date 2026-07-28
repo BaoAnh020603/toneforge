@@ -2,8 +2,8 @@
 
 FastAPI backend for ToneForge. This service handles:
 
-- YouTube search for voice practice tracks
-- conversion of a YouTube video or uploaded audio into note data
+- YouTube Data API search for practice tracks and video metadata
+- conversion of uploaded audio into note data
 - realtime scoring of voice performance
 - in-memory caching for converted references and job state
 
@@ -11,7 +11,7 @@ FastAPI backend for ToneForge. This service handles:
 
 - Python 3.11
 - `ffmpeg` available on `PATH`
-- network access for `yt-dlp` when using YouTube URLs
+- `YOUTUBE_API_KEY` for YouTube search results
 
 ## Setup
 
@@ -47,7 +47,7 @@ pytest
 
 ### `GET /convert/youtube/search`
 
-Search YouTube tracks for voice practice.
+Search YouTube tracks or fetch metadata for a YouTube URL/video id.
 
 Query parameters:
 
@@ -56,7 +56,7 @@ Query parameters:
 
 ### `POST /convert`
 
-Create a conversion job from a YouTube URL.
+Create a conversion job from a YouTube URL. Direct YouTube audio download may be blocked by YouTube; use `POST /convert/upload` for reliable analysis.
 
 ### `POST /convert/upload`
 
@@ -87,4 +87,3 @@ Remove a cached reference from memory.
 - Job and reference cache live in memory inside the running process.
 - Restarting the server clears cache and queued work.
 - For small servers, set `CONVERT_CONCURRENCY=1`.
-
