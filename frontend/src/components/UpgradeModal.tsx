@@ -32,7 +32,7 @@ export const PLANS = [
       "Không quảng cáo",
       "Huy hiệu Creator trên hồ sơ"
     ],
-    buttonText: "Nâng cấp Creator",
+    buttonText: "Liên hệ hỗ trợ",
     buttonVariant: "default",
     popular: true
   }
@@ -112,7 +112,7 @@ export function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
                       variant={plan.buttonVariant as "default" | "outline"}
                       onClick={() => {
                         if (plan.popular) {
-                          window.open('https://www.facebook.com/trongandev/', '_blank');
+                          window.open('https://www.facebook.com/anh.john.794288/', '_blank');
                         } else {
                           onClose();
                         }
