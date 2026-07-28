@@ -186,6 +186,17 @@ export default function DashboardUpload() {
     }
   };
 
+  const isYouTubeLink = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized.includes("youtube.com/watch") ||
+      normalized.includes("youtu.be/") ||
+      normalized.includes("youtube.com/shorts/") ||
+      normalized.includes("youtube.com/embed/") ||
+      normalized.includes("music.youtube.com/")
+    );
+  };
+
   useEffect(() => {
     if (qParam && !hasInitSearch) {
       setHasInitSearch(true);
@@ -1234,13 +1245,22 @@ export default function DashboardUpload() {
                     />
                     <Button
                       onClick={async () => {
-                        if (await checkUploadLimit())
-                          startConversion(linkInput);
+                        if (isYouTubeLink(linkInput)) {
+                          showAlert(
+                            "Link YouTube không dùng để tải âm thanh trực tiếp nữa. Hãy dùng tab Upload File để bóc tách, hoặc tab YouTube để tìm bài hát.",
+                          );
+                          return;
+                        }
+                        if (await checkUploadLimit()) {
+                          showAlert(
+                            "Luồng dán link đã được tắt cho YouTube. Vui lòng dùng Upload File để xử lý thật.",
+                          );
+                        }
                       }}
                       disabled={!linkInput.trim()}
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 hover:bg-blue-500 text-white h-10 px-6 rounded-xl font-bold mt-[0]"
                     >
-                      Kiểm Tra AI
+                      Không dùng
                     </Button>
                   </div>
                   <div className="text-center text-sm text-slate-500 mt-2">
